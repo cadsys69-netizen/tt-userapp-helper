@@ -151,18 +151,37 @@
       line-height: 1.45;
     }
     .empty { color: var(--muted); padding: 16px; text-align: center; }
+    #export-box {
+      width: 100%;
+      min-height: 140px;
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.35;
+      resize: vertical;
+    }
+    .hint { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
   </style>
 </head>
 <body>
   <header>
     <h1>Transport Tycoon — User App data capture</h1>
     <span class="meta" id="meta">Merged cache: 0 keys · last message: —</span>
+    <span class="meta" id="pending-meta" style="display:none;color:var(--warn);"></span>
     <button type="button" class="primary" id="btn-getdata">getData</button>
+    <button type="button" id="btn-redraw">Redraw key list</button>
     <button type="button" id="btn-copy-json">Copy snapshot JSON</button>
     <button type="button" id="btn-copy-safe">Copy share-safe JSON</button>
     <button type="button" id="btn-download">Download .json</button>
     <button type="button" class="warn" id="btn-clear">Clear merged cache</button>
     <label class="inline"><input type="checkbox" id="chk-pretty" checked /> Pretty-print JSON values</label>
+    <label class="inline" title="FiveM sends many updates/sec; redrawing the list each time resets scroll. Data still merges — click Redraw key list to refresh."><input type="checkbox" id="chk-pause-ui" checked /> Pause key list redraw (FiveM)</label>
+    <label class="inline" title="When redraw is live, rebuild the list at most every 350ms."><input type="checkbox" id="chk-throttle" checked /> Throttle live redraw (350ms)</label>
   </header>
   <main>
     <details class="section" open>
@@ -182,6 +201,19 @@
         <div class="kv-list" id="kv-list"><div class="empty">Waiting for data… Open this in-game and press <strong>getData</strong>, or perform actions so keys update.</div></div>
       </div>
     </details>
+    <details class="section" open>
+      <summary>Export box (FiveM: copy / download often blocked)</summary>
+      <div class="section-body">
+        <div class="row-actions">
+          <button type="button" id="btn-fill-export">Fill snapshot JSON</button>
+          <button type="button" id="btn-fill-safe-export">Fill share-safe JSON</button>
+          <button type="button" id="btn-focus-export">Focus export box</button>
+          <button type="button" id="btn-open-data">Open snapshot (data URL)</button>
+        </div>
+        <textarea id="export-box" spellcheck="false" placeholder="Use Fill snapshot JSON, then select all and copy if in-game copy fails…"></textarea>
+        <p class="hint">Clipboard and file downloads are often disabled in FiveM CEF. Filling this box and using <strong>Ctrl+A</strong> / copy is the reliable path.</p>
+      </div>
+    </details>
   </main>
   <div id="toast" role="status"></div>
   <script>
@@ -192,6 +224,8 @@
   const cache = {};
   let lastMsgAt = null;
   let messageCount = 0;
+  let mergeSinceRedraw = 0;
+  let renderTimer = null;
 
   /** Substrings in key names to redact in “share-safe” export (avoid generic “key” — false positives). */
   const SENSITIVE_KEY_SUBSTRINGS = [
@@ -296,15 +330,70 @@
     const keys = Object.keys(cache).length;
     const t = lastMsgAt ? lastMsgAt.toLocaleTimeString() : "—";
     el("meta").textContent = "Merged cache: " + keys + " keys · messages: " + messageCount + " · last: " + t;
+    const pm = el("pending-meta");
+    if (el("chk-pause-ui").checked && mergeSinceRedraw > 0) {
+      pm.style.display = "inline";
+      pm.textContent = "· list stale: " + mergeSinceRedraw + " merge(s) since redraw";
+    } else {
+      pm.style.display = "none";
+      pm.textContent = "";
+    }
+  }
+
+  /** @returns {Promise<boolean>} */
+  async function copyTextRobust(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) {}
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function snapshotJsonText(sanitize) {
+    return JSON.stringify(
+      { meta: snapshotMeta(), data: cloneForExport(sanitize) },
+      null,
+      2
+    );
+  }
+
+  function fillExportText(text) {
+    el("export-box").value = text;
+    showToast("Export box filled");
   }
 
   function render() {
+    mergeSinceRedraw = 0;
+    if (renderTimer) {
+      clearTimeout(renderTimer);
+      renderTimer = null;
+    }
+
     const q = (el("filter").value || "").trim().toLowerCase();
     const keys = Object.keys(cache).sort();
     const filtered = q ? keys.filter((k) => k.toLowerCase().includes(q)) : keys;
     el("filter-count").textContent = filtered.length + " / " + keys.length + " keys";
 
     const list = el("kv-list");
+    const prevScroll = list.scrollTop;
     list.innerHTML = "";
     if (filtered.length === 0) {
       const d = document.createElement("div");
@@ -333,11 +422,11 @@
       copyBtn.textContent = "Copy value";
       copyBtn.addEventListener("click", async () => {
         const text = formatValue(raw);
-        try {
-          await navigator.clipboard.writeText(text);
-          showToast("Copied: " + key);
-        } catch {
-          showToast("Clipboard blocked — select value manually");
+        const ok = await copyTextRobust(text);
+        if (ok) showToast("Copied: " + key);
+        else {
+          fillExportText(text);
+          showToast("Clipboard blocked — value in Export box");
         }
       });
 
@@ -353,7 +442,20 @@
       block.appendChild(pre);
       list.appendChild(block);
     }
+    list.scrollTop = prevScroll;
     updateMeta();
+  }
+
+  function scheduleRender() {
+    if (el("chk-throttle").checked) {
+      if (renderTimer) return;
+      renderTimer = setTimeout(() => {
+        renderTimer = null;
+        render();
+      }, 350);
+      return;
+    }
+    render();
   }
 
   window.addEventListener("message", (event) => {
@@ -367,52 +469,97 @@
     for (const key of Object.keys(data)) {
       cache[key] = data[key];
     }
-    render();
+    if (el("chk-pause-ui").checked) {
+      mergeSinceRedraw++;
+      updateMeta();
+    } else {
+      scheduleRender();
+    }
   });
 
   el("btn-getdata").addEventListener("click", () => post({ type: "getData" }));
+  el("btn-redraw").addEventListener("click", () => render());
   el("chk-pretty").addEventListener("change", render);
+  el("chk-pause-ui").addEventListener("change", () => {
+    mergeSinceRedraw = 0;
+    if (renderTimer) {
+      clearTimeout(renderTimer);
+      renderTimer = null;
+    }
+    render();
+  });
+  el("chk-throttle").addEventListener("change", () => {
+    if (renderTimer) {
+      clearTimeout(renderTimer);
+      renderTimer = null;
+    }
+    if (!el("chk-pause-ui").checked) render();
+  });
   el("filter").addEventListener("input", render);
 
   el("btn-clear").addEventListener("click", () => {
     for (const k of Object.keys(cache)) delete cache[k];
     messageCount = 0;
     lastMsgAt = null;
+    mergeSinceRedraw = 0;
+    if (renderTimer) {
+      clearTimeout(renderTimer);
+      renderTimer = null;
+    }
     render();
     showToast("Merged cache cleared");
   });
 
   async function copyJson(sanitize) {
-    const body = {
-      meta: snapshotMeta(),
-      data: cloneForExport(sanitize)
-    };
-    const text = JSON.stringify(body, null, 2);
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast(sanitize ? "Share-safe JSON copied" : "Snapshot JSON copied");
-    } catch {
-      showToast("Clipboard failed — use Download");
+    const text = snapshotJsonText(sanitize);
+    const ok = await copyTextRobust(text);
+    if (ok) showToast(sanitize ? "Share-safe JSON copied" : "Snapshot JSON copied");
+    else {
+      fillExportText(text);
+      showToast("Clipboard blocked — snapshot in Export box");
     }
   }
 
   el("btn-copy-json").addEventListener("click", () => copyJson(false));
   el("btn-copy-safe").addEventListener("click", () => copyJson(true));
 
+  el("btn-fill-export").addEventListener("click", () => fillExportText(snapshotJsonText(false)));
+  el("btn-fill-safe-export").addEventListener("click", () => fillExportText(snapshotJsonText(true)));
+  el("btn-focus-export").addEventListener("click", () => {
+    const box = el("export-box");
+    box.focus();
+    box.select();
+    showToast("Ctrl+A if needed, then copy");
+  });
+  el("btn-open-data").addEventListener("click", () => {
+    const text = snapshotJsonText(false);
+    try {
+      window.open("data:application/json;charset=utf-8," + encodeURIComponent(text), "_blank");
+      showToast("Opened data URL (may be blocked)");
+    } catch (_) {
+      fillExportText(text);
+      showToast("Open failed — use Export box");
+    }
+  });
+
   el("btn-download").addEventListener("click", () => {
-    const body = {
-      meta: snapshotMeta(),
-      data: cloneForExport(false)
-    };
-    const text = JSON.stringify(body, null, 2);
-    const blob = new Blob([text], { type: "application/json" });
-    const a = document.createElement("a");
+    const text = snapshotJsonText(false);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    a.download = "tt-userapp-snapshot-" + stamp + ".json";
-    a.href = URL.createObjectURL(blob);
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast("Download started");
+    const filename = "tt-userapp-snapshot-" + stamp + ".json";
+    try {
+      const blob = new Blob([text], { type: "application/json" });
+      const a = document.createElement("a");
+      a.download = filename;
+      a.href = URL.createObjectURL(blob);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      showToast("Download triggered");
+    } catch (_) {
+      fillExportText(text);
+      showToast("Download blocked — snapshot in Export box");
+    }
   });
 
   window.addEventListener("keydown", (e) => {
