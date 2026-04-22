@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TT — Self storage auto loader</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d8fd1;
+      --ok: #2a9d7a;
+      --warn: #e9c46a;
+      --err: #e76f51;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    header {
+      padding: 12px 14px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { margin: 0 0 6px; font-size: 15px; }
+    .sub { color: var(--muted); font-size: 12px; line-height: 1.4; max-width: 900px; }
+    main { padding: 12px 14px; max-width: 960px; margin: 0 auto; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    section h2 { margin: 0 0 10px; font-size: 13px; color: var(--warn); }
+    label.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+    input[type="number"] { width: 88px; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    select.item-sel { min-width: 220px; max-width: 100%; padding: 4px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+    th { background: #141c28; color: var(--muted); }
+    #log {
+      max-height: 220px;
+      overflow-y: auto;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .log-line { margin-bottom: 4px; }
+    .log-line.err { color: var(--err); }
+    .log-line.ok { color: var(--ok); }
+    .log-line.warn { color: var(--warn); }
+    .grid-nui { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+    .grid-nui label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Self storage auto loader</h1>
+    <p class="sub">
+      Runs inside Transport Tycoon User App (F1 URL). When <strong>automation is enabled</strong> and the
+      <strong>outer</strong> self storage menu appears (<em>Open Storage</em> / <em>Take to Trunk</em> / <em>Dump from Trunk</em>)
+      with <code>chest</code> starting with <code>self_storage:</code>, it pulls in order:
+      <strong>all trunk targets</strong> for each line, then <strong>all inventory targets</strong>.
+      Uses <code>forceMenuChoice</code> / <code>forceSubmitValue</code> / <code>forceMenuBack</code>.
+      <strong>Esc</strong> pins the app. Host this folder on HTTPS (same origin as <code>items-data.js</code>).
+    </p>
+  </header>
+  <main>
+    <section>
+      <h2>Automation</h2>
+      <label class="row">
+        <input type="checkbox" id="ssl-enabled" />
+        <span>Enable auto-run when outer self storage menu opens</span>
+      </label>
+      <label class="row">
+        <span style="min-width:120px;color:var(--muted);">Shortfall in this unit</span>
+        <select id="ssl-shortfall">
+          <option value="take_all">Take all available &amp; log missing</option>
+          <option value="abort">Abort that item if not enough here</option>
+        </select>
+      </label>
+      <p class="sub" style="margin-top:8px;">
+        Totals are vs your <strong>trailer chest</strong> (<code>chest_u…veh_trailer_…</code>) and <strong>player inventory</strong>.
+        Keep a trailer spawned; trunk pulls need <code>trailer</code> in the live cache.
+      </p>
+    </section>
+
+    <section>
+      <h2>Items (order = trunk phase then inv phase)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Target trunk qty</th>
+            <th>Target inventory qty</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body"></tbody>
+      </table>
+      <p style="margin-top:10px;">
+        <button type="button" id="btn-add-line">Add row</button>
+        <button type="button" class="primary" id="btn-save">Save settings</button>
+        <button type="button" id="btn-getdata">getData</button>
+        <button type="button" id="btn-pin">Pin (Esc)</button>
+        <button type="button" id="btn-clear-log">Clear log</button>
+      </p>
+    </section>
+
+    <section>
+      <h2>NUI timing (same idea as DTC)</h2>
+      <div class="grid-nui">
+        <label>Retries <input type="number" id="nui-retries" min="1" /></label>
+        <label>Poll ms <input type="number" id="nui-timeout" min="1" /></label>
+        <label>Submit retries <input type="number" id="nui-subret" min="1" /></label>
+        <label>Submit poll ms <input type="number" id="nui-subto" min="1" /></label>
+        <label>Extra delay ms <input type="number" id="nui-extra" min="0" /></label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Log</h2>
+      <div id="log"></div>
+    </section>
+  </main>
+
+  <script src="items-data.js"></script>
+  <script src="loader-app.js"></script>
+</body>
+</html>
