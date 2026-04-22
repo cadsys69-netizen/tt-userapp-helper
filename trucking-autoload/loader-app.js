@@ -156,18 +156,24 @@
     const moRaw = cache.menu_open;
     const moOk = boolish(moRaw);
     const chest = String(cache.chest || "");
-    const chestOk = chest.startsWith("self_storage:");
     const rows = parseMenuChoices(cache.menu_choices);
     const strips = rows.map((r) => stripHtml(r && r[0])).filter(Boolean);
     const hasO = strips.includes(OUTER_OPEN);
     const hasT = strips.includes(OUTER_TRUNK);
     const hasD = strips.includes(OUTER_DUMP);
+    const triplet = hasO && hasT && hasD;
+    /** TT often leaves `chest` as "none" on the kiosk until inner open; triplet + title is still unique. */
+    const chestRelaxed =
+      triplet &&
+      (chest.toLowerCase() === "none" || chest === "");
+    const chestOk = chest.startsWith("self_storage:") || chestRelaxed;
     return {
       ok: moOk && chestOk && hasO && hasT && hasD,
       moRaw,
       moOk,
       chest,
       chestOk,
+      chestRelaxed,
       menu: String(cache.menu || ""),
       rowsCount: rows.length,
       strips,
@@ -192,6 +198,7 @@
       a.moOk +
       " · chestOk=" +
       a.chestOk +
+      (a.chestRelaxed ? " (kiosk:none+triplet)" : "") +
       " chest=" +
       (a.chest.length > 70 ? a.chest.slice(0, 70) + "…" : a.chest || "(empty)") +
       " · title=" +
@@ -658,7 +665,8 @@
         " · menu=" +
         JSON.stringify(a.menu) +
         " · chest=" +
-        (a.chest.length > 60 ? a.chest.slice(0, 60) + "…" : a.chest),
+        (a.chest.length > 60 ? a.chest.slice(0, 60) + "…" : a.chest) +
+        (a.chestRelaxed ? " · (gate used kiosk: none+triplet)" : ""),
       "ok"
     );
     runGeneration++;
