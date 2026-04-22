@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TT User App — Data capture</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d8fd1;
+      --accent2: #2a9d7a;
+      --warn: #e9c46a;
+      --danger: #e76f51;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      flex: 1 1 100%;
+    }
+    header .meta {
+      font-size: 11px;
+      color: var(--muted);
+      flex: 1 1 auto;
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.ok { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+    button.warn { border-color: var(--warn); color: var(--warn); }
+    #toast {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      padding: 8px 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 20;
+      max-width: 90vw;
+    }
+    #toast.show { opacity: 1; }
+    main { padding: 12px; max-width: 1200px; margin: 0 auto; }
+    details.section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    details.section > summary {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+    }
+    details.section > summary::-webkit-details-marker { display: none; }
+    .section-body { padding: 0 12px 12px; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    label.inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .keys-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    #filter {
+      flex: 1 1 200px;
+      min-width: 140px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+    }
+    .kv-list { display: flex; flex-direction: column; gap: 8px; }
+    .kv {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .kv-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 8px;
+      background: #141c28;
+      border-bottom: 1px solid var(--border);
+    }
+    .kv-head code {
+      font-size: 12px;
+      color: var(--warn);
+      flex: 1 1 auto;
+      word-break: break-all;
+    }
+    .kv-meta { font-size: 11px; color: var(--muted); }
+    .kv-body {
+      margin: 0;
+      padding: 8px;
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .empty { color: var(--muted); padding: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Transport Tycoon — User App data capture</h1>
+    <span class="meta" id="meta">Merged cache: 0 keys · last message: —</span>
+    <button type="button" class="primary" id="btn-getdata">getData</button>
+    <button type="button" id="btn-copy-json">Copy snapshot JSON</button>
+    <button type="button" id="btn-copy-safe">Copy share-safe JSON</button>
+    <button type="button" id="btn-download">Download .json</button>
+    <button type="button" class="warn" id="btn-clear">Clear merged cache</button>
+    <label class="inline"><input type="checkbox" id="chk-pretty" checked /> Pretty-print JSON values</label>
+  </header>
+  <main>
+    <details class="section" open>
+      <summary>Quick actions (same idea as official sample)</summary>
+      <div class="section-body">
+        <p style="margin:0 0 8px;color:var(--muted);font-size:12px;">Uses <code>window.parent.postMessage(..., "*")</code> like the TT sample.</p>
+        <div class="row-actions" id="sample-actions"></div>
+      </div>
+    </details>
+    <details class="section" open>
+      <summary>All keys (full values, not truncated)</summary>
+      <div class="section-body">
+        <div class="keys-toolbar">
+          <input type="search" id="filter" placeholder="Filter keys…" autocomplete="off" />
+          <span class="kv-meta" id="filter-count"></span>
+        </div>
+        <div class="kv-list" id="kv-list"><div class="empty">Waiting for data… Open this in-game and press <strong>getData</strong>, or perform actions so keys update.</div></div>
+      </div>
+    </details>
+  </main>
+  <div id="toast" role="status"></div>
+  <script>
+(function () {
+  "use strict";
+
+  /** @type {Record<string, unknown>} */
+  const cache = {};
+  let lastMsgAt = null;
+  let messageCount = 0;
+
+  /** Substrings in key names to redact in “share-safe” export (avoid generic “key” — false positives). */
+  const SENSITIVE_KEY_SUBSTRINGS = [
+    "license", "discord", "steam", "fivem", "token", "pkey", "password", "secret"
+  ];
+
+  const el = (id) => document.getElementById(id);
+  const toast = el("toast");
+  let toastTimer = null;
+
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
+  }
+
+  function isSensitiveKey(key) {
+    const k = key.toLowerCase();
+    return SENSITIVE_KEY_SUBSTRINGS.some((s) => k.includes(s));
+  }
+
+  function cloneForExport(sanitize) {
+    const out = {};
+    for (const key of Object.keys(cache).sort()) {
+      let val = cache[key];
+      if (sanitize && isSensitiveKey(key)) {
+        out[key] = "[REDACTED]";
+        continue;
+      }
+      if (typeof val === "string") {
+        out[key] = val;
+      } else if (val === null || val === undefined) {
+        out[key] = val;
+      } else {
+        try {
+          out[key] = JSON.parse(JSON.stringify(val));
+        } catch {
+          out[key] = String(val);
+        }
+      }
+    }
+    return out;
+  }
+
+  function snapshotMeta() {
+    return {
+      capturedAt: new Date().toISOString(),
+      messageCount,
+      keyCount: Object.keys(cache).length,
+      note: "TT User App helper — merged from postMessage data + getData"
+    };
+  }
+
+  function formatValue(raw) {
+    const pretty = el("chk-pretty").checked;
+    if (raw === null || raw === undefined) return String(raw);
+    if (typeof raw === "object") {
+      try {
+        return pretty ? JSON.stringify(raw, null, 2) : JSON.stringify(raw);
+      } catch {
+        return String(raw);
+      }
+    }
+    if (typeof raw === "string") {
+      if (pretty) {
+        const t = raw.trim();
+        if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
+          try {
+            return JSON.stringify(JSON.parse(raw), null, 2);
+          } catch {
+            return raw;
+          }
+        }
+      }
+      return raw;
+    }
+    return String(raw);
+  }
+
+  function valueLength(raw) {
+    if (raw === null || raw === undefined) return 0;
+    if (typeof raw === "object") {
+      try {
+        return JSON.stringify(raw).length;
+      } catch {
+        return String(raw).length;
+      }
+    }
+    return String(raw).length;
+  }
+
+  function post(action) {
+    try {
+      window.parent.postMessage(action, "*");
+    } catch (e) {
+      showToast("postMessage failed (open inside TT User App)");
+    }
+  }
+
+  function updateMeta() {
+    const keys = Object.keys(cache).length;
+    const t = lastMsgAt ? lastMsgAt.toLocaleTimeString() : "—";
+    el("meta").textContent = "Merged cache: " + keys + " keys · messages: " + messageCount + " · last: " + t;
+  }
+
+  function render() {
+    const q = (el("filter").value || "").trim().toLowerCase();
+    const keys = Object.keys(cache).sort();
+    const filtered = q ? keys.filter((k) => k.toLowerCase().includes(q)) : keys;
+    el("filter-count").textContent = filtered.length + " / " + keys.length + " keys";
+
+    const list = el("kv-list");
+    list.innerHTML = "";
+    if (filtered.length === 0) {
+      const d = document.createElement("div");
+      d.className = "empty";
+      d.textContent = keys.length === 0 ? "No data yet — use getData in-game." : "No keys match filter.";
+      list.appendChild(d);
+      updateMeta();
+      return;
+    }
+
+    for (const key of filtered) {
+      const raw = cache[key];
+      const block = document.createElement("article");
+      block.className = "kv";
+
+      const head = document.createElement("div");
+      head.className = "kv-head";
+      const code = document.createElement("code");
+      code.textContent = key;
+      const meta = document.createElement("span");
+      meta.className = "kv-meta";
+      meta.textContent = typeof raw + " · " + valueLength(raw) + " chars";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.textContent = "Copy value";
+      copyBtn.addEventListener("click", async () => {
+        const text = formatValue(raw);
+        try {
+          await navigator.clipboard.writeText(text);
+          showToast("Copied: " + key);
+        } catch {
+          showToast("Clipboard blocked — select value manually");
+        }
+      });
+
+      head.appendChild(code);
+      head.appendChild(meta);
+      head.appendChild(copyBtn);
+
+      const pre = document.createElement("pre");
+      pre.className = "kv-body";
+      pre.textContent = formatValue(raw);
+
+      block.appendChild(head);
+      block.appendChild(pre);
+      list.appendChild(block);
+    }
+    updateMeta();
+  }
+
+  window.addEventListener("message", (event) => {
+    const payload = event.data;
+    if (!payload || typeof payload !== "object") return;
+    const data = payload.data;
+    if (!data || typeof data !== "object") return;
+
+    messageCount++;
+    lastMsgAt = new Date();
+    for (const key of Object.keys(data)) {
+      cache[key] = data[key];
+    }
+    render();
+  });
+
+  el("btn-getdata").addEventListener("click", () => post({ type: "getData" }));
+  el("chk-pretty").addEventListener("change", render);
+  el("filter").addEventListener("input", render);
+
+  el("btn-clear").addEventListener("click", () => {
+    for (const k of Object.keys(cache)) delete cache[k];
+    messageCount = 0;
+    lastMsgAt = null;
+    render();
+    showToast("Merged cache cleared");
+  });
+
+  async function copyJson(sanitize) {
+    const body = {
+      meta: snapshotMeta(),
+      data: cloneForExport(sanitize)
+    };
+    const text = JSON.stringify(body, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(sanitize ? "Share-safe JSON copied" : "Snapshot JSON copied");
+    } catch {
+      showToast("Clipboard failed — use Download");
+    }
+  }
+
+  el("btn-copy-json").addEventListener("click", () => copyJson(false));
+  el("btn-copy-safe").addEventListener("click", () => copyJson(true));
+
+  el("btn-download").addEventListener("click", () => {
+    const body = {
+      meta: snapshotMeta(),
+      data: cloneForExport(false)
+    };
+    const text = JSON.stringify(body, null, 2);
+    const blob = new Blob([text], { type: "application/json" });
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    a.download = "tt-userapp-snapshot-" + stamp + ".json";
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("Download started");
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      post({ type: "pin" });
+    }
+  });
+
+  const actions = [
+    { name: "Paleto Bay", action: { type: "setWaypoint", x: -267, y: 6231 } },
+    { name: "Sandy Shores", action: { type: "setWaypoint", x: 1601, y: 3662 } },
+    { name: "Los Santos", action: { type: "setWaypoint", x: 228, y: -878 } },
+    { name: "Faction menu", action: { type: "sendCommand", command: "faction" } },
+    { name: "Open trunk (rm_trunk)", action: { type: "sendCommand", command: "rm_trunk" } },
+    { name: "Trigger accept", action: { type: "sendCommand", command: "userapp_trigger accept" } },
+    { name: "getNamedData (inventory)", action: { type: "getNamedData", keys: ["inventory", "weight", "max_weight", "chest"] } },
+    { name: "Notification test", action: { type: "notification", text: "TT capture helper" } }
+  ];
+
+  const btnWrap = el("sample-actions");
+  for (const a of actions) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = a.name;
+    b.addEventListener("click", () => post(a.action));
+    btnWrap.appendChild(b);
+  }
+
+  render();
+})();
+  </script>
+</body>
+</html>
