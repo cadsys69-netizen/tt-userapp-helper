@@ -30,6 +30,13 @@
   /** Prevent immediate second run while outer menu still open after completion. */
   let cooldownUntil = 0;
 
+  let lastGateLogMsg = "";
+  let lastGateLogAt = 0;
+  let lastMergeLogAt = 0;
+  let lastMergeSig = "";
+  let ignoredNoDataCount = 0;
+  let flatDataNoteCount = 0;
+
   function loadConfig() {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -145,12 +152,130 @@
     return Number(e.amount) || 0;
   }
 
-  function isOuterSelfStorageMenu() {
-    if (!boolish(cache.menu_open)) return false;
-    if (!String(cache.chest || "").startsWith("self_storage:")) return false;
+  function analyzeOuterMenu() {
+    const moRaw = cache.menu_open;
+    const moOk = boolish(moRaw);
+    const chest = String(cache.chest || "");
+    const chestOk = chest.startsWith("self_storage:");
     const rows = parseMenuChoices(cache.menu_choices);
-    const strips = rows.map((r) => stripHtml(r && r[0]));
-    return strips.includes(OUTER_OPEN) && strips.includes(OUTER_TRUNK) && strips.includes(OUTER_DUMP);
+    const strips = rows.map((r) => stripHtml(r && r[0])).filter(Boolean);
+    const hasO = strips.includes(OUTER_OPEN);
+    const hasT = strips.includes(OUTER_TRUNK);
+    const hasD = strips.includes(OUTER_DUMP);
+    return {
+      ok: moOk && chestOk && hasO && hasT && hasD,
+      moRaw,
+      moOk,
+      chest,
+      chestOk,
+      menu: String(cache.menu || ""),
+      rowsCount: rows.length,
+      strips,
+      hasO,
+      hasT,
+      hasD,
+    };
+  }
+
+  function isOuterSelfStorageMenu() {
+    return analyzeOuterMenu().ok;
+  }
+
+  function logGateMismatchThrottled(a) {
+    if (!dbgGate()) return;
+    const stripPreview = a.strips.slice(0, 12).join(" · ");
+    const more = a.strips.length > 12 ? " …(+" + (a.strips.length - 12) + ")" : "";
+    const msg =
+      "[gate] no match · menu_open=" +
+      JSON.stringify(a.moRaw) +
+      " ok=" +
+      a.moOk +
+      " · chestOk=" +
+      a.chestOk +
+      " chest=" +
+      (a.chest.length > 70 ? a.chest.slice(0, 70) + "…" : a.chest || "(empty)") +
+      " · title=" +
+      JSON.stringify(a.menu).slice(0, 56) +
+      " · rows=" +
+      a.rowsCount +
+      " · Open|Trunk|Dump=" +
+      a.hasO +
+      "|" +
+      a.hasT +
+      "|" +
+      a.hasD +
+      " · strips: " +
+      stripPreview +
+      more;
+    const t = Date.now();
+    if (msg === lastGateLogMsg && t - lastGateLogAt < 2800) return;
+    lastGateLogMsg = msg;
+    lastGateLogAt = t;
+    log(msg, "warn");
+  }
+
+  function dbgGate() {
+    const el = document.getElementById("dbg-gate");
+    return !el || el.checked;
+  }
+
+  function dbgMerge() {
+    const el = document.getElementById("dbg-merge");
+    return !el || el.checked;
+  }
+
+  function saveDbgToggles() {
+    try {
+      const g = document.getElementById("dbg-gate");
+      const m = document.getElementById("dbg-merge");
+      if (g) localStorage.setItem("ssl_loader_dbg_gate", g.checked ? "1" : "0");
+      if (m) localStorage.setItem("ssl_loader_dbg_merge", m.checked ? "1" : "0");
+    } catch {}
+  }
+
+  function loadDbgToggles() {
+    try {
+      const g = localStorage.getItem("ssl_loader_dbg_gate");
+      const m = localStorage.getItem("ssl_loader_dbg_merge");
+      const eg = document.getElementById("dbg-gate");
+      const em = document.getElementById("dbg-merge");
+      if (eg) eg.checked = g !== "0";
+      if (em) em.checked = m !== "0";
+    } catch {}
+  }
+
+  function mergeSignature(d) {
+    return [
+      cache.menu_open,
+      cache.chest,
+      cache.menu,
+      Object.keys(d).join(","),
+    ].join("|");
+  }
+
+  function logMergeThrottled(d) {
+    if (!dbgMerge()) return;
+    const t = Date.now();
+    const sig = mergeSignature(d);
+    if (sig === lastMergeSig && t - lastMergeLogAt < 900) return;
+    lastMergeSig = sig;
+    lastMergeLogAt = t;
+    const a = analyzeOuterMenu();
+    const nk = Object.keys(d).length;
+    const tk = Object.keys(cache).length;
+    log(
+      "[cache] merged +" +
+        nk +
+        " keys (cache size " +
+        tk +
+        ") · outerGate=" +
+        a.ok +
+        " · enabled=" +
+        !!config.enabled +
+        " · lines=" +
+        (config.lines || []).length,
+      "ok"
+    );
   }
 
   async function waitFor(pred, label) {
@@ -228,6 +353,7 @@
       boolish(cache.prompt) +
       "|" +
       JSON.stringify(cache.menu_choices || []);
+    log("[nui] forceMenuChoice mod=0 plain=" + plain + " label=" + label + " choiceLen=" + full.length, "ok");
     post({ type: "forceMenuChoice", choice: full, mod: 0 });
     await sleep(config.nui.extraDelayMs);
     await waitMenuChange(prevSig);
@@ -236,6 +362,7 @@
   async function submitPromptAmount(amount) {
     const { submitRetries, submitTimeoutMs, extraDelayMs } = config.nui;
     await waitFor(() => boolish(cache.prompt), "amount prompt");
+    log("[nui] forceSubmitValue retries for amount=" + amount, "ok");
     let n = submitRetries;
     while (n-- > 0) {
       post({ type: "forceSubmitValue", value: String(amount) });
@@ -283,6 +410,7 @@
       boolish(cache.prompt) +
       "|" +
       JSON.stringify(cache.menu_choices || []);
+    log("[nui] vehicle row " + stripHtml(full).slice(0, 100), "ok");
     post({ type: "forceMenuChoice", choice: full, mod: 0 });
     await sleep(config.nui.extraDelayMs);
     await waitMenuChange(prevSig);
@@ -294,11 +422,17 @@
     const strips = rows.map((r) => stripHtml(r && r[0])).filter(Boolean);
     if (!strips.length) return;
     const allCargo = strips.every((s) => s.startsWith("Truck Cargo:"));
-    if (allCargo) return;
+    if (allCargo) {
+      log("[nui] skip vehicle step (cargo-only menu after Take to Trunk)", "ok");
+      return;
+    }
     const hasVehicleLike = strips.some(
       (s) => /\([^)]+\)/.test(s) && !s.startsWith("Truck Cargo:") && !/^put\b/i.test(s) && !/^take\b/i.test(s)
     );
-    if (hasVehicleLike) await pickVehicleRow();
+    if (hasVehicleLike) {
+      log("[nui] vehicle selection menu detected", "ok");
+      await pickVehicleRow();
+    }
   }
 
   async function pickCargoLine(vrpName) {
@@ -318,6 +452,7 @@
       boolish(cache.prompt) +
       "|" +
       JSON.stringify(cache.menu_choices || []);
+    log("[nui] cargo row choiceLen=" + full.length + " vrp=" + vrpName, "ok");
     post({ type: "forceMenuChoice", choice: full, mod: 0 });
     await sleep(config.nui.extraDelayMs);
     await waitMenuChange(prevSig);
@@ -327,6 +462,7 @@
     const meta = window.TT_TRUCKING_ITEMS[itemId];
     if (!meta) throw new Error("Unknown item id: " + itemId);
     const vrp = meta.vrpName;
+    log("[nui] trunk flow item=" + itemId + " vrp=" + vrp + " qty=" + take, "ok");
 
     await closeToOuterOrIdle(12);
     if (!isOuterSelfStorageMenu()) throw new Error("Lost outer self storage menu (trunk)");
@@ -345,6 +481,7 @@
     const meta = window.TT_TRUCKING_ITEMS[itemId];
     if (!meta) throw new Error("Unknown item id: " + itemId);
     const vrp = meta.vrpName;
+    log("[nui] inv flow item=" + itemId + " vrp=" + vrp + " qty=" + take, "ok");
     const w = Number(cache.weight) || 0;
     const maxW = Number(cache.max_weight) || 0;
     const addW = (Number(meta.weight) || 0) * take;
@@ -379,8 +516,20 @@
     log("— Run started —", "ok");
     try {
       const lines = (config.lines || []).filter((l) => l && l.itemId);
+      log(
+        "[run] lines=" +
+          lines.length +
+          " shortfall=" +
+          config.shortfallMode +
+          " trailer=" +
+          JSON.stringify(cache.trailer || "") +
+          " trunkKey=" +
+          (trunkChestKey() || "(none)"),
+        "ok"
+      );
       if (!lines.length) {
         notify("~o~[SSL]~w~ No items configured.");
+        log("[run] abort: no rows with itemId", "err");
         return;
       }
       if (!String(cache.trailer || "").trim()) {
@@ -390,6 +539,13 @@
 
       post({ type: "getData" });
       await sleep(200);
+      log(
+        "[run] cache chest=" +
+          String(cache.chest || "").slice(0, 50) +
+          " storageKeys=" +
+          (Object.keys(cache).filter((k) => k.startsWith("chest_self_storage")).join(",") || "(none)"),
+        "ok"
+      );
 
       for (const phase of ["trunk", "inv"]) {
         if (gen !== runGeneration) return;
@@ -476,21 +632,100 @@
   }
 
   function maybeAutoTrigger() {
-    if (!config.enabled || executing) return;
-    if (Date.now() < cooldownUntil) return;
+    if (!config.enabled) {
+      logGateDisabledOnce();
+      return;
+    }
+    if (executing) return;
+    if (Date.now() < cooldownUntil) {
+      logCooldownThrottled();
+      return;
+    }
     const now = Date.now();
     if (now - lastTriggerCheck < 150) return;
     lastTriggerCheck = now;
-    if (!isOuterSelfStorageMenu()) return;
+
+    const a = analyzeOuterMenu();
+    if (!a.ok) {
+      logGateMismatchThrottled(a);
+      return;
+    }
+
+    const lines = (config.lines || []).filter((l) => l && l.itemId);
+    log(
+      "[gate] MATCH — queue run · lines=" +
+        lines.length +
+        " · menu=" +
+        JSON.stringify(a.menu) +
+        " · chest=" +
+        (a.chest.length > 60 ? a.chest.slice(0, 60) + "…" : a.chest),
+      "ok"
+    );
     runGeneration++;
     const gen = runGeneration;
     queueMicrotask(() => executeRun(gen));
   }
 
+  let lastDisabledLog = 0;
+  function logGateDisabledOnce() {
+    if (!dbgGate()) return;
+    const t = Date.now();
+    if (t - lastDisabledLog < 4000) return;
+    lastDisabledLog = t;
+    log("[gate] Skip: automation checkbox is OFF (enable it + Save)", "warn");
+  }
+
+  let lastCooldownLog = 0;
+  function logCooldownThrottled() {
+    if (!dbgGate()) return;
+    const t = Date.now();
+    if (t - lastCooldownLog < 2000) return;
+    lastCooldownLog = t;
+    const s = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    log("[gate] Skip: cooldown (" + s + "s left after last run)", "warn");
+  }
+
   window.addEventListener("message", (e) => {
-    const d = e.data && e.data.data;
-    if (!d || typeof d !== "object") return;
+    const raw = e.data;
+    if (!raw || typeof raw !== "object") {
+      ignoredNoDataCount++;
+      if (ignoredNoDataCount <= 3) log("[msg] empty or non-object event.data", "warn");
+      return;
+    }
+
+    let d = raw.data;
+    if (!d || typeof d !== "object") {
+      if (
+        typeof raw.menu_open !== "undefined" ||
+        typeof raw.menu_choices !== "undefined" ||
+        typeof raw.inventory !== "undefined" ||
+        typeof raw.chest !== "undefined"
+      ) {
+        d = raw;
+        if (flatDataNoteCount < 4) {
+          flatDataNoteCount++;
+          log(
+            "[msg] using flat event.data (no .data). Top keys: " + Object.keys(raw).slice(0, 25).join(", "),
+            "warn"
+          );
+        }
+      } else {
+        ignoredNoDataCount++;
+        if (ignoredNoDataCount <= 8 || ignoredNoDataCount % 200 === 0) {
+          log(
+            "[msg] ignored (no game payload). type=" +
+              String(raw.type || "") +
+              " keys=" +
+              Object.keys(raw).slice(0, 12).join(","),
+            "warn"
+          );
+        }
+        return;
+      }
+    }
+
     Object.assign(cache, d);
+    logMergeThrottled(d);
     maybeAutoTrigger();
   });
 
@@ -591,11 +826,22 @@
 
   function bindUi() {
     writeDomFromConfig();
+    loadDbgToggles();
     renderLinesTable();
+
+    document.getElementById("dbg-gate").addEventListener("change", () => {
+      saveDbgToggles();
+      log("[dbg] Gate logging " + (document.getElementById("dbg-gate").checked ? "on" : "off"), "ok");
+    });
+    document.getElementById("dbg-merge").addEventListener("change", () => {
+      saveDbgToggles();
+      log("[dbg] Merge logging " + (document.getElementById("dbg-merge").checked ? "on" : "off"), "ok");
+    });
 
     document.getElementById("ssl-enabled").addEventListener("change", () => {
       readNuiFromDom();
       saveConfig();
+      log("[cfg] automation enabled=" + !!config.enabled, config.enabled ? "ok" : "warn");
     });
     document.getElementById("ssl-shortfall").addEventListener("change", () => {
       readNuiFromDom();
@@ -613,9 +859,20 @@
       readNuiFromDom();
       saveConfig();
       notify("~g~[SSL]~w~ Saved.");
-      log("Saved config.", "ok");
+      log(
+        "[cfg] Saved · enabled=" +
+          !!config.enabled +
+          " · rows=" +
+          (config.lines || []).length +
+          " · shortfall=" +
+          config.shortfallMode,
+        "ok"
+      );
     });
-    document.getElementById("btn-getdata").addEventListener("click", () => post({ type: "getData" }));
+    document.getElementById("btn-getdata").addEventListener("click", () => {
+      log("[act] postMessage getData", "ok");
+      post({ type: "getData" });
+    });
     document.getElementById("btn-pin").addEventListener("click", () => post({ type: "pin" }));
     document.getElementById("btn-clear-log").addEventListener("click", () => {
       logEl().innerHTML = "";
@@ -627,12 +884,28 @@
   });
 
   document.addEventListener("DOMContentLoaded", () => {
+    log(
+      "[boot] href=" +
+        (location.href || "").slice(0, 120) +
+        " · visibility=" +
+        document.visibilityState +
+        " · hidden=" +
+        document.hidden,
+      "ok"
+    );
     if (!window.TT_TRUCKING_ITEMS) {
-      log("items-data.js failed to load.", "err");
+      log("items-data.js failed to load — check Network tab for 404 on items-data.js (same folder as this page).", "err");
       return;
     }
+    const ic = Object.keys(window.TT_TRUCKING_ITEMS).length;
+    log("[boot] item catalog keys=" + ic, "ok");
     bindUi();
-    log("Ready. Enable automation, open self storage outer menu (Open Storage / Take to Trunk / Dump from Trunk).", "ok");
+    readNuiFromDom();
+    log(
+      "[boot] Keep this User App tab ACTIVE while testing (inactive tabs may not receive updates).",
+      "warn"
+    );
+    log("Ready. Enable automation + add rows + Save, then open outer self storage menu.", "ok");
     post({ type: "getData" });
   });
 })();

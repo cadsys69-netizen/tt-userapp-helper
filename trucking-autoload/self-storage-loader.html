@@ -60,7 +60,7 @@
     th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
     th { background: #141c28; color: var(--muted); }
     #log {
-      max-height: 220px;
+      max-height: 340px;
       overflow-y: auto;
       font-family: ui-monospace, Consolas, monospace;
       font-size: 11px;
@@ -92,6 +92,14 @@
   <main>
     <section>
       <h2>Automation</h2>
+      <label class="row">
+        <input type="checkbox" id="dbg-gate" checked />
+        <span>Debug: log why the outer-menu gate fails (throttled)</span>
+      </label>
+      <label class="row">
+        <input type="checkbox" id="dbg-merge" checked />
+        <span>Debug: log incoming cache updates (throttled ~1s)</span>
+      </label>
       <label class="row">
         <input type="checkbox" id="ssl-enabled" />
         <span>Enable auto-run when outer self storage menu opens</span>
