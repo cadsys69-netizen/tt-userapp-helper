@@ -8,6 +8,7 @@
   const OUTER_TRUNK = "Take to Trunk";
   const OUTER_DUMP = "Dump from Trunk";
   const INNER_TAKE = "Take";
+  const CMD_OPEN_TRUNK = "rm_trunk";
 
   const defaultConfig = () => ({
     enabled: false,
@@ -36,6 +37,8 @@
   let lastMergeSig = "";
   let ignoredNoDataCount = 0;
   let flatDataNoteCount = 0;
+  let lastSelfStorageChestKey = null;
+  let lastToggleTrigger = null;
 
   function loadConfig() {
     try {
@@ -116,6 +119,9 @@
     const c = String(cache.chest || "");
     if (c.startsWith("self_storage:")) {
       return "chest_" + c;
+    }
+    if (lastSelfStorageChestKey && cache[lastSelfStorageChestKey] != null) {
+      return lastSelfStorageChestKey;
     }
     for (const k of Object.keys(cache)) {
       if (k.startsWith("chest_self_storage:")) return k;
@@ -497,17 +503,19 @@
       throw new Error("Inventory full: weight " + w + " + " + addW + " > " + maxW);
     }
 
-    await closeToOuterOrIdle(12);
-    if (!isOuterSelfStorageMenu()) throw new Error("Lost outer self storage menu (inv)");
-
-    await pickMenuChoiceByPlain(OUTER_OPEN, "Open Storage");
-    await pickMenuChoiceByPlain(INNER_TAKE, "Take");
     await pickCargoLine(vrp);
     await submitPromptAmount(take);
     await sleep(config.nui.extraDelayMs * 2);
-    await closeToOuterOrIdle(8);
     post({ type: "getData" });
     await sleep(config.nui.extraDelayMs * 4);
+  }
+
+  async function ensureInventoryTakeMenu() {
+    await closeToOuterOrIdle(12);
+    if (!isOuterSelfStorageMenu()) throw new Error("Lost outer self storage menu before inventory phase");
+    await pickMenuChoiceByPlain(OUTER_OPEN, "Open Storage");
+    await pickMenuChoiceByPlain(INNER_TAKE, "Take");
+    log("[nui] inventory phase entered (Open Storage -> Take)", "ok");
   }
 
   function plannedTake(need, available, mode) {
@@ -582,6 +590,18 @@
             }
             const plan = plannedTake(needT, inStor, config.shortfallMode);
             if (plan.take <= 0) {
+              if (plan.note === "partial") {
+                log(
+                  itemId +
+                    ": shortfall in this unit — need " +
+                    needT +
+                    ", have " +
+                    inStor +
+                    ", missing " +
+                    (plan.short || needT),
+                  "warn"
+                );
+              }
               if (plan.note === "abort_shortfall") {
                 log(
                   itemId + ": abort — need " + needT + " trunk, only " + inStor + " in storage",
@@ -598,6 +618,9 @@
             log("Trunk pull " + itemId + " x" + plan.take);
             await runTakeToTrunkForItem(itemId, plan.take);
           } else {
+            if (line === lines[0]) {
+              await ensureInventoryTakeMenu();
+            }
             const needI = Math.max(0, targetI - inInv);
             if (needI <= 0) {
               log(itemId + ": inv already satisfied (" + inInv + "/" + targetI + ")");
@@ -607,6 +630,18 @@
             const inStor2 = amountIn(st2, itemId);
             const plan = plannedTake(needI, inStor2, config.shortfallMode);
             if (plan.take <= 0) {
+              if (plan.note === "partial") {
+                log(
+                  itemId +
+                    ": inv shortfall in this unit — need " +
+                    needI +
+                    ", have " +
+                    inStor2 +
+                    ", missing " +
+                    (plan.short || needI),
+                  "warn"
+                );
+              }
               if (plan.note === "abort_shortfall") {
                 log(
                   itemId + ": abort inv — need " + needI + ", only " + inStor2 + " in storage",
@@ -634,6 +669,10 @@
     } finally {
       executing = false;
       cooldownUntil = Date.now() + 5000;
+      await closeToOuterOrIdle(8);
+      post({ type: "sendCommand", command: CMD_OPEN_TRUNK });
+      log("[nui] post-run: sendCommand rm_trunk", "ok");
+      await sleep(config.nui.extraDelayMs * 4);
       await closeToOuterOrIdle(6);
     }
   }
@@ -733,6 +772,25 @@
     }
 
     Object.assign(cache, d);
+    for (const k of Object.keys(d)) {
+      if (k.startsWith("chest_self_storage:")) {
+        lastSelfStorageChestKey = k;
+      }
+    }
+    if (String(cache.chest || "").startsWith("self_storage:")) {
+      lastSelfStorageChestKey = "chest_" + String(cache.chest);
+    }
+
+    if (typeof d.trigger_ssltoggle !== "undefined" && d.trigger_ssltoggle !== lastToggleTrigger) {
+      lastToggleTrigger = d.trigger_ssltoggle;
+      config.enabled = !config.enabled;
+      const ch = document.getElementById("ssl-enabled");
+      if (ch) ch.checked = !!config.enabled;
+      saveConfig();
+      notify("~y~[SSL]~w~ Automation " + (config.enabled ? "~g~ENABLED" : "~r~DISABLED"));
+      log("[trigger] ssltoggle -> enabled=" + config.enabled, config.enabled ? "ok" : "warn");
+    }
+
     logMergeThrottled(d);
     maybeAutoTrigger();
   });
@@ -913,6 +971,12 @@
       "[boot] Keep this User App tab ACTIVE while testing (inactive tabs may not receive updates).",
       "warn"
     );
+    post({
+      type: "registerTrigger",
+      trigger: "ssltoggle",
+      name: "SSL Toggle Automation",
+    });
+    log("[boot] registered keybind trigger: ssltoggle", "ok");
     log("Ready. Enable automation + add rows + Save, then open outer self storage menu.", "ok");
     post({ type: "getData" });
   });
