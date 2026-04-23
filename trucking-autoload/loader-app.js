@@ -38,6 +38,7 @@
   let ignoredNoDataCount = 0;
   let flatDataNoteCount = 0;
   let lastSelfStorageChestKey = null;
+  const chestKeySeenAt = {};
   let lastToggleTrigger = null;
 
   function loadConfig() {
@@ -120,13 +121,19 @@
     if (c.startsWith("self_storage:")) {
       return "chest_" + c;
     }
-    if (lastSelfStorageChestKey && cache[lastSelfStorageChestKey] != null) {
-      return lastSelfStorageChestKey;
-    }
+    if (lastSelfStorageChestKey && cache[lastSelfStorageChestKey] != null) return lastSelfStorageChestKey;
+    /** Pick the most recently updated self-storage key from cache. */
+    let best = null;
+    let bestTs = -1;
     for (const k of Object.keys(cache)) {
-      if (k.startsWith("chest_self_storage:")) return k;
+      if (!k.startsWith("chest_self_storage:")) continue;
+      const ts = chestKeySeenAt[k] || 0;
+      if (ts > bestTs) {
+        bestTs = ts;
+        best = k;
+      }
     }
-    return null;
+    return best;
   }
 
   function getStorageCounts() {
@@ -324,6 +331,13 @@
     await sleep(config.nui.extraDelayMs);
   }
 
+  async function closeAnyMenu(maxSteps) {
+    for (let i = 0; i < maxSteps; i++) {
+      if (!boolish(cache.menu_open)) return;
+      await forceMenuBackStep();
+    }
+  }
+
   async function closeToOuterOrIdle(maxSteps) {
     for (let i = 0; i < maxSteps; i++) {
       if (isOuterSelfStorageMenu()) return;
@@ -503,6 +517,7 @@
       throw new Error("Inventory full: weight " + w + " + " + addW + " > " + maxW);
     }
 
+    await ensureInventoryTakeListMenu();
     await pickCargoLine(vrp);
     await submitPromptAmount(take);
     await sleep(config.nui.extraDelayMs * 2);
@@ -516,6 +531,14 @@
     await pickMenuChoiceByPlain(OUTER_OPEN, "Open Storage");
     await pickMenuChoiceByPlain(INNER_TAKE, "Take");
     log("[nui] inventory phase entered (Open Storage -> Take)", "ok");
+  }
+
+  async function ensureInventoryTakeListMenu() {
+    const strips = parseMenuChoices(cache.menu_choices).map((r) => stripHtml(r && r[0]));
+    const hasCargoList = strips.some((s) => s.startsWith("Truck Cargo:"));
+    if (hasCargoList) return;
+    await waitFor(() => boolish(cache.menu_open), "inventory menu open");
+    await pickMenuChoiceByPlain(INNER_TAKE, "Take");
   }
 
   function plannedTake(need, available, mode) {
@@ -564,6 +587,7 @@
 
       for (const phase of ["trunk", "inv"]) {
         if (gen !== runGeneration) return;
+        let enteredInventoryPhase = false;
         for (const line of lines) {
           if (gen !== runGeneration) return;
           const itemId = line.itemId;
@@ -618,8 +642,9 @@
             log("Trunk pull " + itemId + " x" + plan.take);
             await runTakeToTrunkForItem(itemId, plan.take);
           } else {
-            if (line === lines[0]) {
+            if (!enteredInventoryPhase) {
               await ensureInventoryTakeMenu();
+              enteredInventoryPhase = true;
             }
             const needI = Math.max(0, targetI - inInv);
             if (needI <= 0) {
@@ -669,11 +694,15 @@
     } finally {
       executing = false;
       cooldownUntil = Date.now() + 5000;
-      await closeToOuterOrIdle(8);
+      await closeAnyMenu(10);
       post({ type: "sendCommand", command: CMD_OPEN_TRUNK });
       log("[nui] post-run: sendCommand rm_trunk", "ok");
-      await sleep(config.nui.extraDelayMs * 4);
-      await closeToOuterOrIdle(6);
+      /** Trunk menu may appear slightly later; poll briefly then close once visible. */
+      for (let i = 0; i < 12; i++) {
+        await sleep(100);
+        if (boolish(cache.menu_open)) break;
+      }
+      await closeAnyMenu(12);
     }
   }
 
@@ -775,10 +804,12 @@
     for (const k of Object.keys(d)) {
       if (k.startsWith("chest_self_storage:")) {
         lastSelfStorageChestKey = k;
+        chestKeySeenAt[k] = Date.now();
       }
     }
     if (String(cache.chest || "").startsWith("self_storage:")) {
       lastSelfStorageChestKey = "chest_" + String(cache.chest);
+      chestKeySeenAt[lastSelfStorageChestKey] = Date.now();
     }
 
     if (typeof d.trigger_ssltoggle !== "undefined" && d.trigger_ssltoggle !== lastToggleTrigger) {
