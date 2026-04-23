@@ -551,6 +551,7 @@
   async function executeRun(gen) {
     if (executing) return;
     executing = true;
+    let completedRun = false;
     log("— Run started —", "ok");
     try {
       const lines = (config.lines || []).filter((l) => l && l.itemId);
@@ -688,21 +689,26 @@
 
       notify("~g~[SSL]~w~ Finished run.");
       log("— Run finished —", "ok");
+      completedRun = true;
     } catch (e) {
       log("Run error: " + (e && e.message ? e.message : e), "err");
       notify("~r~[SSL]~w~ " + String((e && e.message) || e).slice(0, 120));
     } finally {
       executing = false;
       cooldownUntil = Date.now() + 5000;
-      await closeAnyMenu(10);
-      post({ type: "sendCommand", command: CMD_OPEN_TRUNK });
-      log("[nui] post-run: sendCommand rm_trunk", "ok");
-      /** Trunk menu may appear slightly later; poll briefly then close once visible. */
-      for (let i = 0; i < 12; i++) {
-        await sleep(100);
-        if (boolish(cache.menu_open)) break;
+      if (completedRun) {
+        await closeAnyMenu(10);
+        post({ type: "sendCommand", command: CMD_OPEN_TRUNK });
+        log("[nui] post-run: sendCommand rm_trunk", "ok");
+        /** Trunk menu may appear slightly later; poll briefly then close once visible. */
+        for (let i = 0; i < 12; i++) {
+          await sleep(100);
+          if (boolish(cache.menu_open)) break;
+        }
+        await closeAnyMenu(12);
+      } else {
+        log("[nui] post-run trunk refresh skipped (run not completed)", "warn");
       }
-      await closeAnyMenu(12);
     }
   }
 
