@@ -1,0 +1,491 @@
+﻿<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<title>Doggo's Trucking Calculator + Auto Grab</title>
+		<link rel="stylesheet" href="styles.css" />
+	</head>
+	<body>
+		<div id="main">
+			<div class="user-input">
+				<div class="button-container">
+					<button class="toggle-settings" onclick="toggleSettings()">☰</button>
+					<button class="storages-button" onclick="openStoragesUI()" title="View storage contents">
+						Storages
+					</button>
+					<button class="transfers-button" onclick="openTransfersUI()" title="View transfer history">
+						Transfers
+					</button>
+					<button class="refresh-button" onclick="refresh()" title="Uses 3 API charges per refresh">
+						Refresh
+					</button>
+				</div>
+				<div class="collapsible">
+					<!-- User Settings Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							User Settings <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<label for="apiKey">API Key:</label>
+							<input type="password" id="apiKey" placeholder="Enter API Key" />
+							<label for="userId">User ID:</label>
+							<input type="number" id="userId" placeholder="Enter User ID" />
+							<label for="alternativeApi" title="Use the alternative api">Alternative API:</label>
+							<input type="checkbox" title="Adds 15% to storage capacity" id="alternativeApi" checked />
+							<label for="premium" title="Adds 15% to storage capacity">Premium:</label>
+							<input type="checkbox" title="Adds 15% to storage capacity" id="premium" checked />
+							<label for="farmersMilk" title="Adds 20% to storage capacity">Farmer's Milk:</label>
+							<input type="checkbox" title="Adds 20% to storage capacity" id="farmersMilk" />
+							<label for="perk" title="Select active perk">Perk:</label>
+							<select id="perk" title="Select active perk">
+								<option value="none">None</option>
+								<option value="postop">PostOP</option>
+								<option value="strength">Strength</option>
+							</select>
+							<div
+								style="
+									grid-column: span 2;
+									display: flex;
+									justify-content: space-around;
+									margin-top: 5px;
+								"
+							>
+								<button id="clearAllData" class="danger-button" onclick="clearAllData()">
+									Clear All Data
+								</button>
+								<button onclick="saveApiKey()">Save API Key</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- Trucking Settings Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Trucking Settings <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<label for="mk15">MK15:</label>
+							<input type="checkbox" id="mk15" value="mk15" checked />
+							<label for="trailer">Trailers:</label>
+							<select id="trailer"></select>
+							<label for="useOptimalLoading" title="Use optimal processing loading"
+								>Use optimal processing loading:</label
+							>
+							<input
+								type="checkbox"
+								title="Use optimal processing loading"
+								id="useOptimalLoading"
+								checked
+							/>
+							<label for="useItems" title="Use items from storages">Use items from storages:</label>
+							<input type="checkbox" title="Use items from storages" id="useItems" checked />
+							<label for="useInventory" title="Use the player inventory">Use inventory:</label>
+							<input type="checkbox" title="Use the player inventory" id="useInventory" checked />
+							<label for="autoRefresh">Auto-refresh:</label>
+							<input type="checkbox" id="autoRefresh" />
+							<label for="autoOpenTrunk">Automatically open trunk(s):</label>
+							<input type="checkbox" id="autoOpenTrunk" />
+							<label for="autoCloseTrunk">Automatically close trunk(s):</label>
+							<input type="checkbox" id="autoCloseTrunk" />
+							<label for="autoRecipe">Automatically select recipe:</label>
+							<input type="checkbox" id="autoRecipe" />
+							<label for="useHighestMultiplier">Use highest multipliers:</label>
+							<input type="checkbox" id="useHighestMultiplier" />
+						</div>
+					</div>
+
+					<!-- Recipe Settings Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Recipe Settings <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<!-- Multi-item selection -->
+							<div class="items-selection-container" style="grid-column: span 2">
+								<div class="items-list" id="selected-items-list">
+									<!-- Selected items will appear here -->
+								</div>
+								<div class="item-add-container">
+									<div class="item-add-row">
+										<select id="itemType" class="item-dropdown"></select>
+										<input
+											type="number"
+											id="amount"
+											placeholder="Amount"
+											value="1000"
+											class="item-amount-input"
+										/>
+										<button onclick="addItem()" class="add-item-btn">Add</button>
+									</div>
+								</div>
+							</div>
+							<div
+								style="grid-column: span 2; display: flex; justify-content: right; margin-top: -5px"
+								class="recipe-settings-container"
+							>
+								<button onclick="openRecipeSettings()" title="Customize recipe priorities">
+									Recipe Settings
+								</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- Appearance Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Appearance Settings <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<label for="showPinPanel" title="Display pin panel">Show Pin Panel:</label>
+							<input type="checkbox" title="Display pin panel" id="showPinPanel" />
+							<label for="windowedMode" title="Display graph in a resizable window">Windowed mode:</label>
+							<input type="checkbox" title="Display graph in a resizable window" id="windowedMode" />
+							<label for="hideGridLines">Hide Grid Lines:</label>
+							<input type="checkbox" id="hideGridLines" />
+							<label for="nodeOpacity">Node Opacity:</label>
+							<input type="range" id="nodeOpacity" min="0.1" max="1" step="0.1" value="1" />
+							<label for="bgOpacity">Background Opacity:</label>
+							<input type="range" id="bgOpacity" min="0" max="1" step="0.1" value="1" />
+							<label for="pinPanelOpacity">Pin Panel Opacity:</label>
+							<input type="range" id="pinPanelOpacity" min="0" max="1" step="0.1" value="1" />
+							<div
+								style="
+									grid-column: span 2;
+									display: flex;
+									justify-content: space-between;
+									margin-top: 10px;
+								"
+							>
+								<button onclick="resetWindowPosition()" title="Reset the window position and size">
+									Reset Window
+								</button>
+								<button onclick="resetPinPanelPosition()" title="Reset the pin panel position and size">
+									Reset Pin Panel
+								</button>
+							</div>
+							<div id="console-button-container" class="console-button-container">
+								<button onclick="reloadApp()" title="Reload the application">Reload App</button>
+								<button onclick="toggleConsole()" title="Show/hide the console for debugging">
+									Toggle Console
+								</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- NUI Settings Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							NUI Settings <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<label for="truckingItemToTake" title="Item to take when executing take"
+								>Take command item:</label
+							>
+							<select id="truckingItemToTake" title="Item to take when executing take"></select>
+							<label for="takeMax" title="Take maximum amount of items for recipes">Take Max:</label>
+							<input type="checkbox" id="takeMax" title="Take maximum amount of items for recipes" />
+							<label for="dumpBeforeExecuting" title="Dump all items before executing recipe"
+								>Dump Before Executing:</label
+							>
+							<input
+								type="checkbox"
+								id="dumpBeforeExecuting"
+								title="Dump all items before executing recipe"
+								checked
+							/>
+
+							<div class="nui-buttons">
+								<button onclick="nuiDump()">Dump</button>
+								<button onclick="nuiTake()">Take</button>
+								<button onclick="nuiExecute()">Recipe</button>
+								<button onclick="nuiCustom()">Custom</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- Auto Grab (fork) -->
+					<div class="submenu autograb-submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Auto Grab <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<label for="ag-enabled" title="Auto-run pinned recipe at self storage"
+								>Enable Auto Grab:</label
+							>
+							<input type="checkbox" id="ag-enabled" />
+							<label for="ag-step-path" title="Enable DTC auto-recipe path helper"
+								>Step-path helper:</label
+							>
+							<input type="checkbox" id="ag-step-path" checked />
+							<label for="ag-require-pin" title="Only run when a graph node is pinned"
+								>Require pinned node:</label
+							>
+							<input type="checkbox" id="ag-require-pin" checked />
+							<div class="nui-buttons" style="grid-column: span 2">
+								<button type="button" id="ag-sync-pin">Preview ingredients</button>
+								<button type="button" id="ag-run-now">Run now</button>
+							</div>
+							<p id="ag-status" class="autograb-status"></p>
+							<p class="autograb-hint">Keybind: <code>userapp_trigger agtoggle</code></p>
+						</div>
+					</div>
+
+					<!-- Debug capture (fork) -->
+					<div class="submenu debug-submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Debug Capture <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content" style="grid-column: span 2">
+							<label for="ag-debug-enabled">Record menus &amp; chest updates:</label>
+							<input type="checkbox" id="ag-debug-enabled" checked />
+							<div class="nui-buttons">
+								<button type="button" id="ag-debug-mark">Mark moment</button>
+								<button type="button" id="ag-debug-export-btn">Build export</button>
+								<button type="button" id="ag-debug-clear">Clear</button>
+							</div>
+							<div id="ag-debug-log" class="ag-debug-log"></div>
+							<textarea
+								id="ag-debug-export"
+								class="ag-debug-export"
+								readonly
+								placeholder="Export JSON appears here — select all and copy in FiveM"
+							></textarea>
+						</div>
+					</div>
+
+					<!-- Custom Recipe Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Custom Recipe Creator <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content">
+							<label title="Ingredients list">Ingredients</label>
+							<div class="items-selection-container" style="grid-column: span 2">
+								<div class="items-list" id="custom-recipe-ingredients-list">
+									<!-- Selected items will appear here -->
+								</div>
+								<div class="item-add-container">
+									<div class="item-add-row">
+										<select id="custom-recipe-ingredient-type" class="item-dropdown"></select>
+										<input
+											type="number"
+											id="custom-recipe-ingredient-amount"
+											placeholder="Ratio"
+											value="3"
+											class="item-amount-input"
+										/>
+										<button onclick="addCustomRecipeIngredient()" class="add-item-btn">Add</button>
+									</div>
+								</div>
+							</div>
+							<label title="Products list">Products</label>
+							<div class="items-selection-container" style="grid-column: span 2">
+								<div class="items-list" id="custom-recipe-products-list">
+									<!-- Selected items will appear here -->
+								</div>
+								<div class="item-add-container">
+									<div class="item-add-row">
+										<select id="custom-recipe-product-type" class="item-dropdown"></select>
+										<input
+											type="number"
+											id="custom-recipe-product-amount"
+											placeholder="Ratio"
+											value="1"
+											class="item-amount-input"
+										/>
+										<button onclick="addCustomRecipeProduct()" class="add-item-btn">Add</button>
+									</div>
+								</div>
+							</div>
+							<div
+								style="grid-column: span 2; display: flex; justify-content: right; margin-top: -5px"
+								class="recipe-settings-container"
+							>
+								<button onclick="createCustomRecipe()">Save as Recipe</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- Route Info Submenu -->
+					<div class="submenu">
+						<div class="submenu-header" onclick="toggleSubmenu(this)">
+							Route Info <span class="submenu-toggle">▼</span>
+						</div>
+						<div class="submenu-content route-info-content">
+							<div class="route-info-row">
+								<span class="route-info-label">Total Runs</span>
+								<span id="total-runs" class="route-info-value">0</span>
+							</div>
+							<div class="route-info-row">
+								<span class="route-info-label">Total Cost</span>
+								<span id="total-cost" class="route-info-value expense">$0</span>
+							</div>
+							<div class="route-info-row">
+								<span class="route-info-label">Total Revenue</span>
+								<span id="total-revenue" class="route-info-value profit">$0</span>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div id="error" class="error"></div>
+			</div>
+			<div class="graph-container">
+				<div class="window-header">
+					<div class="window-title">Doggo's Trucking Calculator</div>
+				</div>
+				<div class="resize-handle">
+					<div class="resize-handle-icon"></div>
+				</div>
+				<div class="graph-wrapper">
+					<div class="elk-graph"></div>
+				</div>
+			</div>
+			<div id="pin-panel" class="pin-panel hidden">
+				<div class="panel-header">
+					<div class="panel-title">Pinned Recipe</div>
+				</div>
+				<div class="panel-content">
+					<div id="pinned-recipe">
+						<p>No recipe pinned.</p>
+					</div>
+				</div>
+				<div class="resize-handle"></div>
+			</div>
+			<div id="console-container" class="console-container hidden">
+				<div class="console-header">
+					<div class="console-title">Console</div>
+					<div class="console-filters">
+						<button class="console-filter active" data-type="all">All</button>
+						<button class="console-filter" data-type="log">Log</button>
+						<button class="console-filter" data-type="info">Info</button>
+						<button class="console-filter" data-type="warn">Warn</button>
+						<button class="console-filter" data-type="error">Error</button>
+					</div>
+					<button class="console-clear" onclick="clearConsole()">Clear</button>
+					<button class="console-close" onclick="toggleConsole()">×</button>
+				</div>
+				<div class="console-content"></div>
+				<div class="console-input-container">
+					<textarea id="console-code-input" placeholder="Enter code to execute..."></textarea>
+					<button id="console-execute-btn" onclick="executeConsoleCode()">Execute</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Recipe Settings Modal -->
+		<div id="recipe-settings-modal" class="modal hidden">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2>Recipe Settings</h2>
+					<button class="modal-close" onclick="closeRecipeSettings()">×</button>
+				</div>
+				<div class="modal-body">
+					<div class="recipe-search">
+						<input
+							type="text"
+							id="recipe-search"
+							placeholder="Search recipes..."
+							oninput="filterRecipes()"
+						/>
+						<button class="reset-priorities" onclick="resetPriorities()">Reset All to Default</button>
+					</div>
+					<div id="recipe-list" class="recipe-list"></div>
+				</div>
+				<div class="modal-footer">
+					<button onclick="saveRecipeSettings()">Close</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Storage UI Modal -->
+		<div id="storage-ui-modal" class="modal hidden">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2>Storage Contents</h2>
+					<button class="modal-close" onclick="closeStoragesUI()">×</button>
+				</div>
+				<div class="modal-body">
+					<div class="storage-search">
+						<input
+							type="text"
+							id="storage-search"
+							placeholder="Search items..."
+							oninput="filterStorageItems()"
+						/>
+						<div class="storage-filter-container">
+							<button
+								id="reset-all-storage-priorities"
+								class="reset-priorities"
+								title="Reset all storage priorities to default values"
+								onclick="resetAllStoragePriorities()"
+							>
+								Reset All Priorities
+							</button>
+							<label for="trucking-items-only">
+								<input type="checkbox" id="trucking-items-only" onchange="filterStorageItems()" />
+								Trucking only
+							</label>
+						</div>
+					</div>
+					<table id="storage-list" class="storage-list">
+						<tbody>
+							<!-- Rows will be dynamically populated -->
+						</tbody>
+					</table>
+				</div>
+				<div class="modal-footer">
+					<button onclick="closeStoragesUI()">Close</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Transfers UI Modal -->
+		<div id="transfers-ui-modal" class="modal hidden">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2>Transfer History</h2>
+					<button class="modal-close" onclick="closeTransfersUI()">×</button>
+				</div>
+				<div class="modal-body">
+					<div class="transfer-search">
+						<input
+							type="text"
+							id="transfer-search"
+							placeholder="Search transfers..."
+							oninput="filterTransfers()"
+						/>
+						<select id="transfer-type-filter" onchange="filterTransfers()">
+							<option value="all">All Transfers</option>
+							<option value="in">Incoming</option>
+							<option value="out">Outgoing</option>
+						</select>
+						<button
+							class="danger-button"
+							title="Clear all transfer history"
+							onclick="
+								clearTransferLogs();
+								filterTransfers();
+							"
+						>
+							Clear History
+						</button>
+					</div>
+					<div id="transfers-list" class="transfers-list">
+						<!-- Transfers will be dynamically populated -->
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button onclick="closeTransfersUI()">Close</button>
+				</div>
+			</div>
+		</div>
+
+		<script src="https://cdn.jsdelivr.net/npm/elkjs@0.8.2/lib/elk.bundled.js"></script>
+		<script type="module" src="index.js"></script>
+		<script src="debug-capture.js"></script>
+		<script src="autograb-bridge.js"></script>
+	</body>
+</html>
+

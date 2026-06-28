@@ -1,0 +1,202 @@
+:root {
+  --bg: #0c1016;
+  --panel: #151c28;
+  --border: #2a3548;
+  --text: #e8edf4;
+  --muted: #8b9cb3;
+  --accent: #4a9eff;
+  --warn: #e9c46a;
+  --err: #e76f51;
+  --ok: #2a9d7a;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+.hidden { display: none !important; }
+.invisible { visibility: hidden !important; }
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #1a2332;
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+label { display: inline-flex; align-items: center; gap: 6px; margin: 4px 8px 4px 0; }
+#main {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  grid-template-rows: 1fr auto;
+  height: 100vh;
+  gap: 0;
+}
+#main.hide-settings .user-input { display: none; }
+#main.transparent-background { background: transparent; }
+.user-input {
+  grid-row: 1 / span 2;
+  overflow: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 10px;
+}
+.user-input.collapsed .settings-body { display: none; }
+.user-input h1 { font-size: 15px; margin: 0 0 8px; }
+.user-input h2 { font-size: 12px; color: var(--warn); margin: 14px 0 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+input[type="text"], input[type="number"], input[type="password"], select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+#error { color: var(--err); min-height: 1.2em; margin: 6px 0; }
+.totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+.totals div { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+.totals span { display: block; color: var(--muted); font-size: 11px; }
+.submenu { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
+.submenu-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px; cursor: pointer; background: #121822;
+}
+.submenu-content { padding: 8px; }
+.submenu-content.collapsed { display: none; }
+.submenu-toggle.collapsed { transform: rotate(-90deg); }
+#selected-items-list, #custom-recipe-ingredients-list, #custom-recipe-products-list {
+  border: 1px solid var(--border); border-radius: 6px; min-height: 48px; padding: 6px; margin-bottom: 8px;
+}
+.graph-container {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #0a0e14;
+}
+.graph-container.windowed {
+  position: fixed;
+  z-index: 50;
+  top: 8%;
+  left: 8%;
+  width: 84%;
+  height: 84%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45);
+}
+.window-header {
+  height: 28px;
+  background: #121822;
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.window-header.hidden-title { display: none; }
+.graph-wrapper {
+  position: absolute;
+  inset: 28px 0 0 0;
+  overflow: hidden;
+}
+.elk-graph, .graph-wrapper svg { width: 100%; height: 100%; }
+.resize-handle {
+  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+}
+.resize-handle-icon {
+  width: 100%; height: 100%;
+  background: linear-gradient(135deg, transparent 50%, var(--muted) 50%);
+  opacity: .6;
+}
+#pin-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  width: 300px;
+  height: 300px;
+  z-index: 60;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+}
+#pin-panel .panel-header {
+  padding: 6px 8px;
+  background: #121822;
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  font-size: 12px;
+}
+#pinned-recipe { flex: 1; overflow: hidden; }
+#pin-panel .resize-handle { position: absolute; right: 0; bottom: 0; }
+.modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: min(720px, 92vw);
+  max-height: 85vh;
+  overflow: auto;
+  padding: 12px;
+}
+#console-container {
+  grid-column: 1 / span 2;
+  height: 180px;
+  border-top: 1px solid var(--border);
+  background: #0a0e14;
+  display: flex;
+  flex-direction: column;
+}
+.console-toolbar { display: flex; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.console-content { flex: 1; overflow: auto; font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 6px; }
+.console-filter.active { background: var(--accent); border-color: var(--accent); }
+#console-code-input { width: 100%; min-height: 48px; margin-top: 6px; }
+#ag-debug-panel {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #101722;
+}
+#ag-debug-log {
+  max-height: 160px;
+  overflow: auto;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+}
+#ag-debug-export {
+  width: 100%;
+  min-height: 72px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10px;
+}
+.node { cursor: pointer; }
+.node.pinned-node rect { stroke: #ff5555; stroke-width: 3px; }
+.no-items-message { color: var(--muted); padding: 8px; }
+#console-button-container { position: fixed; right: 8px; bottom: 8px; z-index: 80; }
+#main.in-game-windowed { background: transparent; }
+.graph-container.in-game .window-header { display: none; }
+.graph-container.in-game .graph-wrapper { inset: 0; }
+@media (max-width: 900px) {
+  #main { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  .user-input { grid-row: auto; max-height: 42vh; }
+}
